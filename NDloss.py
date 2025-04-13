@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-
+import pos_on_class
 def compute_projection_l2_loss(student_features, teacher_features, labels, num_classes, device='cuda'):
     """
     计算教师和伪教师投影后的L2损失，并对每个类别求平均，再对所有类别的损失求均值
