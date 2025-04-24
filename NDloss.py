@@ -1,51 +1,68 @@
-import torch
-import torch.nn.functional as F
-import pos_on_class
-def compute_projection_l2_loss(pseudo_teacher_features, teacher_features, projected_features_S, projected_features_T, labels, num_classes, device='cuda'):
+def compute_projection_l2_loss(pseudo_teacher_features, teacher_features,
+                               projected_features_S, projected_features_T, labels, num_classes):
     """
-    计算教师和伪教师投影后的L2损失，并对每个类别求平均，再对所有类别的损失求均值
+    计算教师和伪教师投影后的L2损失，并对每个类别求平均，再对所有类别的损失进行样本量加权平均
     Args:
-        pseudo_teacher_features:伪教师特征，形状为 [B, 197, 1024]
-        projected_features_T: touying教师特征，形状为 [B, 197, 1024]
-        labels: 每个样本的标签，形状为 [B]
-        num_classes: 类别数 C
-        device: 运行设备
+        pseudo_teacher_features: [B, 197, d]
+        teacher_features: [B, 197, d]
+        projected_features_S: [B, 197, d]
+        projected_features_T: [B, 197, d]
+        labels: [B]
     Returns:
-        avg_loss: 平均的L2损失
+        avg_loss: scalar
     """
-    pseudo_teacher_features = pseudo_teacher_features.to(device)  # [B, 197, 1024]
-    teacher_features = teacher_features.to(device)  # [B, 197, 1024]
-    projected_features_S= projected_features_S.to(device)  # [B, 197, 1024]
-    projected_features_T= projected_features_T.to(device)  # [B, 197, 1024]
-    labels = labels.to(device)  # [B]
     total_loss = 0.0
+    total_samples = 0
+
     for k in range(num_classes):
-        # 获取当前类别 k 的样本索引
-        class_indices = (labels == k).nonzero(as_tuple=True)[0]  # 所有属于类别 k 的样本索引
-        
-        if len(class_indices) == 0:
+        # 获取当前类别样本索引
+        class_indices = (labels == k).nonzero(as_tuple=True)[0]
+
+        if class_indices.numel() == 0:
             continue
-        
-        # 对于属于当前类别 k 的所有样本
-        class_projected_features_S = projected_features_S[class_indices]  # 形状 [N_k, 197, 1024]
-        class_projected_features_T = projected_features_T[class_indices]  # 形状 [N_k, 197, 1024]
 
-        # 计算L2损失
-        l2_loss = torch.norm(class_projected_features_S - class_projected_features_T, p=2, dim=-1)  # [N_k, 197]
-        
-        # 计算教师和伪教师特征的L2范数
-        student_norm = torch.norm(class_pseudo_teacher_features, p=2, dim=-1)  # [N_k, 197]
-        teacher_norm = torch.norm(class_teacher_features, p=2, dim=-1)  # [N_k, 197]
+        # 提取该类别下的特征
+        proj_S = projected_features_S[class_indices]  # [N_k, 197, d]
+        proj_T = projected_features_T[class_indices]  # [N_k, 197, d]
+        feat_S = pseudo_teacher_features[class_indices]  # [N_k, 197, d]
+        feat_T = teacher_features[class_indices]  # [N_k, 197, d]
 
-        # 归一化损失
-        max_norm = torch.max(student_norm, teacher_norm)  # [N_k, 197]
-        normalized_l2_loss = l2_loss / max_norm  # [N_k, 197]
+        # 计算每个 patch 的通道向量 L2 范数
+        norm_S = torch.norm(feat_S, dim=-1)  # [N_k, 197]
+        norm_T = torch.norm(feat_T, dim=-1)  # [N_k, 197]
+        norm_Ts = torch.norm(proj_S, dim=-1)  # [N_k, 197]
+        # 防止除零
+        max_norm = torch.max(norm_S, norm_T) + 1e-6  # [N_k, 197]
 
-        # 计算当前类别 k 的损失
-        class_loss = normalized_l2_loss.mean()  # 平均化该类别的L2损失
-        total_loss += class_loss  # 将该类别的损失累加到总损失
+        # 计算投影向量之间的 L2 距离
+        diff = proj_S - proj_T  # [N_k, 197, d]
+        dist = torch.norm(diff, dim=-1)  # [N_k, 197]
 
-    # 计算所有类别的平均损失
-    avg_loss = total_loss / num_classes
+        # 归一化距离
+        normed_dist = 1 - (norm_Ts / (max_norm + 1e-6))  # [N_k, 197]
+        # 类内平均
+        class_loss = normed_dist.mean()
 
+        # 样本加权
+        total_loss += class_loss * class_indices.numel()
+        total_samples += class_indices.numel()
+
+    avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
     return avg_loss
+
+
+@torch.no_grad()
+def evaluate(model, val_loader, device):
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for images, labels in val_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+            outputs = model(images)
+            _, predicted = torch.max(outputs, 1)  # top-1 prediction
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+    accuracy = correct / total
+    return accuracy * 100  # 返回百分比形式，和 timm 一致
