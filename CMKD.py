@@ -26,7 +26,7 @@ class SimpleTransformerEncoder(nn.Module):
 
 class CMKD(nn.Module):
     def __init__(self, input_channel_first=768, input_channel_second=768, num_classes=10):
-        super(DisCoMKD, self).__init__()
+        super(CMKD, self).__init__()
 
         self.first_enc_inv = SimpleTransformerEncoder(dim=input_channel_first)
         self.first_enc_spec = SimpleTransformerEncoder(dim=input_channel_first)
