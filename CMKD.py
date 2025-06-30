@@ -1,3 +1,9 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+
 class FC_Classifier(nn.Module):
     def __init__(self, n_classes, input_dim=None):
         super().__init__()
@@ -80,6 +86,77 @@ class CrossmodelKD(nn.Module):
               self.discr(grad_reverse(f_shared_discr, lambda_val)), self.discr(grad_reverse(s_shared_discr, lambda_val)), \
               self.task_cl3(f_shared_discr), self.task_cl3(s_shared_discr), \
               self.task_cl3(f_domain_discr), self.task_cl3(s_domain_discr)
+
+
+class CrossmodelKDLoss(nn.Module):
+    def __init__(self, alpha=1.0, beta=1.0, gamma=1.0):
+        """
+        alpha: 控制判别器损失 (模态不可辨性)
+        beta: 控制正交性损失
+        gamma: 判别器损失整体权重
+        """
+        super(CrossmodelKDLoss, self).__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+
+    @staticmethod
+    def orthogonal_loss(x, y):
+        """
+        惩罚 x 与 y 的非正交性，鼓励共享特征与模态特征正交。
+        """
+        x = F.normalize(x, dim=1)
+        y = F.normalize(y, dim=1)
+        dot = (x * y).sum(dim=1)
+        return (dot ** 2).mean()
+
+    def forward(
+        self,
+        f_shared_discr, s_shared_discr,
+        f_domain_discr, s_domain_discr,
+        f_logits, s_logits,
+        discr_f, discr_s,
+        labels
+    ):
+        """
+        计算所有损失并返回一个总损失及字典项。
+        参数：
+            f_shared_discr, s_shared_discr: 来自两个模态的共享特征
+            f_domain_discr, s_domain_discr: 来自两个模态的私有特征
+            f_logits, s_logits: 来自两个模态的分类预测
+            discr_f, discr_s: 判别器对共享特征的模态分类输出
+            labels: ground-truth 类别标签
+        """
+
+        # 分类损失
+        loss_cls_f = F.cross_entropy(f_logits, labels)
+        loss_cls_s = F.cross_entropy(s_logits, labels)
+
+        # 判别器目标标签（0：教师 fx，1：学生 sx）
+        B = labels.size(0)
+        modal_label_f = torch.zeros(B, dtype=torch.long, device=labels.device)
+        modal_label_s = torch.ones(B, dtype=torch.long, device=labels.device)
+
+        loss_discr_f = F.cross_entropy(discr_f, modal_label_f)
+        loss_discr_s = F.cross_entropy(discr_s, modal_label_s)
+        loss_discr = loss_discr_f + loss_discr_s
+
+        # 正交性损失
+        loss_orth_f = self.orthogonal_loss(f_shared_discr, f_domain_discr)
+        loss_orth_s = self.orthogonal_loss(s_shared_discr, s_domain_discr)
+        loss_orth = loss_orth_f + loss_orth_s
+
+        # 总损失
+        total_loss = loss_cls_f + loss_cls_s + self.beta * loss_orth + self.gamma * loss_discr
+
+        return total_loss, {
+            'loss_cls_f': loss_cls_f.item(),
+            'loss_cls_s': loss_cls_s.item(),
+            'loss_orth': loss_orth.item(),
+            'loss_discr': loss_discr.item(),
+            'total_loss': total_loss.item()
+        }
+
 
 
       
