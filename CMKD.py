@@ -24,9 +24,9 @@ class SimpleTransformerEncoder(nn.Module):
             x = x.view(B, C, H * W).permute(0, 2, 1)  # -> [B, N, C]
         return self.transformer(x).mean(dim=1)  # -> [B, D]
 
-class CMKD(nn.Module):
+class CrossmodelKD(nn.Module):
     def __init__(self, input_channel_first=768, input_channel_second=768, num_classes=10):
-        super(CMKD, self).__init__()
+        super(CrossmodelKD, self).__init__()
 
         self.first_enc_inv = SimpleTransformerEncoder(dim=input_channel_first)
         self.first_enc_spec = SimpleTransformerEncoder(dim=input_channel_first)
