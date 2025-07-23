@@ -21,7 +21,7 @@ class BiDirectionalAlignLayer(nn.Module):
         self.memory_key = nn.Parameter(torch.randn(1, memory_tokens, num_heads, self.head_dim))
         self.memory_value = nn.Parameter(torch.randn(1, memory_tokens, num_heads, self.head_dim))
 
-        self.query_proj = nn.Linear(dim, dim)
+        self.memory_query_proj = nn.Linear(dim, dim)
 
         self.memory_mapper = nn.Sequential(
             nn.Linear(dim, dim),
@@ -45,7 +45,7 @@ class BiDirectionalAlignLayer(nn.Module):
         v = mem_value.permute(0, 2, 1, 3)  # [B, H, M, d]
 
         # 投影学生特征为query，分头处理
-        query = self.query_proj(sar_feat).view(B, T, self.num_heads, self.head_dim)  # [B, T, H, d]
+        query = self.memory_query_proj(sar_feat).view(B, T, self.num_heads, self.head_dim)  # [B, T, H, d]
         query = query.permute(0, 2, 1, 3)  # [B, H, T, d]
 
         # 计算注意力分数
@@ -79,13 +79,11 @@ class BiDirectionalAlignLayer(nn.Module):
         sim_matrix_1 = self.similarity_fn_1(s_key, t_key_used)
         sar_feat_updated = sar_feat + torch.bmm(sim_matrix_1, t_value_used)
 
-        # Teacher ← SAR
-        sim_matrix_2 = self.similarity_fn_2(t_key_used, s_key)
-        opt_feat_fake = torch.bmm(sim_matrix_2, s_value)
+
         if opt_feat is not None:
-            opt_feat_fake = opt_feat + opt_feat_fake
+            opt_feat_fake = opt_feat 
         else:
-            opt_feat_fake = pseudo_teacher_feat + opt_feat_fake
+            opt_feat_fake = pseudo_teacher_feat 
     
         return opt_feat_fake, sar_feat_updated, memory_align_loss
 
