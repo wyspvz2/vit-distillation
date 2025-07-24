@@ -951,7 +951,8 @@ class VisionTransformer(nn.Module):
                         teacher_features: Optional[list] = None,
                         distill_layer_idx: Optional[int] = None,
                         use_teacher: bool = True,
-                        enable_distill: bool = True) -> torch.Tensor:
+                        enable_distill: bool = True
+                        ) -> torch.Tensor:
         """Forward pass through feature layers with optional distillation at specified layer."""
         x = self.patch_embed(x)
         x = self._pos_embed(x)
@@ -983,6 +984,7 @@ class VisionTransformer(nn.Module):
                     use_teacher=use_teacher
                 )
 
+     
 
         x = self.norm(x)
         return x, features, distill_loss
