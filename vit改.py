@@ -43,7 +43,7 @@ import torch.nn.functional as F
 from torch.jit import Final
 import sys
 sys.path.append('/home/wys/DecompositionKD/vit_kd')
-from sim_matrix import similarity_fn_1, similarity_fn_2
+from sim_matrix import similarity_fn_1
 from distill_attention import IterativeBiDirectionalAlign
 from timm.data import (
     IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD,
@@ -553,10 +553,7 @@ class VisionTransformer(nn.Module):
             self.distill_module = IterativeBiDirectionalAlign(
                 dim=768,  # embed_dim通常是768
                 similarity_fn_1=similarity_fn_1,
-                similarity_fn_2=similarity_fn_2,
-                num_iters=3,
-                memory_tokens=196,
-                num_heads=8
+                num_iters=3
             )
         else:
             self.distill_module = None
